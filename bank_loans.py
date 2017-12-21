@@ -38,34 +38,67 @@ class Facility(object):
                 InvalidTypes: if banned_states is not a list
         """
         # TODO: Make attributes private
-        self.facility_id = facility_id
+
+        # Static attributes
+        self.id = facility_id
         self.bank_id = bank_id
         self.initial_amount = initial_amount
-        self.balance_amount = initial_amount
         self.interest_rate = interest_rate
         self.max_default_likelihood = max_default_likelihood
-        self.banned_states = set(banned_states)
+        self.banned_states = set(banned_states)  # optimizes lookup
+
+        # Dynamic attributes
+        self.balance_amount = initial_amount
+        self.current_yield = 0.
 
     def __repr__(self):
-        return str({
+        return repr({
             'facility_id': self.facility_id,
             'bank_id': self.bank_id,
             'initial_amount': self.initial_amount,
-            'balance_amount': self.balance_amount,
             'interest_rate': self.interest_rate,
             'max_default_likelihood': self.max_default_likelihood,
             'banned_states': self.banned_states,
+            'balance_amount': self.balance_amount,
+            'current_yield': self.current_yield,
         })
 
     def is_valid_assignment(self, loan_request):
         """
+            Validates loan request against all constraints and conventants
+
             Arguments:
                 loan: Loan object
 
             Returns:
                 bool
         """
-        # TODO: IMPLEMENT
+
+        # Validate against constraints & covenants
+        if loan_request.origin_state in self.banned_states:
+            return False
+        if loan_request.default_likelihood > self.max_default_likelihood:
+            return False
+        if loan_request.amount > self.balance_amount:
+            return False
+
+        return True
+
+    def compute_loan_yield(self, loan_request):
+        return loan_request.amount * ((1 - loan_request.default_likelihood) * loan_request.interest_rate - loan_request.default_likelihood - self.interest_rate)
+
+    def issue_loan(self, loan_request):
+        """
+            Side Effects:
+                `self.balance_amount` is updated to reflect remaining lendable amount in facility
+                `self.current_yield` is updated to reflect current effective yield of the facility
+        """
+        # TODO: Bake validation into issue_loan
+        self.balance_amount = self.balance_amount - loan_request.amount
+        expected_yield = self.compute_loan_yield(loan_request)
+        self.current_yield += expected_yield
+
+        return expected_yield
 
 
 class LoanRequest(object):
@@ -79,14 +112,14 @@ class LoanRequest(object):
         # TODO: Make attributes private
         # TODO: Documentation
 
-        self.loan_id = loan_id
+        self.id = loan_id
         self.amount = amount
         self.default_likelihood = default_likelihood
         self.interest_rate = interest_rate
         self.origin_state = origin_state
 
     def __repr__(self):
-        return str({
+        return repr({
             'loan_id': self.loan_id,
             'amount': self.amount,
             'default_likelihood': self.default_likelihood,
@@ -130,8 +163,8 @@ def main():
 
     # Process Loans Stream
     for loan in loans_df.itertuples():
-        loan_found = False
 
+        # Parse & Load Loan Request
         loan_id = int(loan.id)
         amount = float(loan.amount)
         default_likelihood = float(loan.default_likelihood)
@@ -146,12 +179,20 @@ def main():
 
         # Iterate over facilities for loan assignments
         for facility in facilities_list:
-            loan_found = facility.is_valid_assignment(loan_request)
+            if facility.is_valid_assignment(loan_request):
+                # 1. Issue Loan and compute yield
+                expected_yield = facility.issue_loan(loan_request)
 
-            if loan_found:
-                # Log to assignmenet file
-                # Compute yield
+                # Log to assignment file
+                print('loan:', loan.id, 'assigned facility:', facility.id)
+                print(expected_yield)
+
+                # Loan request satisfied
                 break
+
+    # Print Facility Yield Report
+    for facility in facilities_list:
+        print('facility:', facility.id, 'expected_yield', round(facility.current_yield))
 
 
 if __name__ == '__main__':
