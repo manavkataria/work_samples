@@ -24,6 +24,9 @@ YIELDS_CSV_PATH = DIR_PATH + 'yields.csv'
 
 
 def main():
+    # TODO(Future): Implement overwriting default configuration with using command line arguments
+    # see `argparse`: https://docs.python.org/2/library/argparse.html
+
     # Load and Parse Facilities, Covenants and Loans
     loan_server = LoanFacilitiesServer(FACILITIES_CSV_PATH, COVENANTS_CSV_PATH, LOANS_CSV_PATH)
 
