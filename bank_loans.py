@@ -12,7 +12,31 @@ YIELDS_CSV_PATH = DIR_PATH + 'yeilds_mk.csv'
 
 
 class Facility(object):
+    """
+        Facility class with all its associated covenants in one place
+
+        Interfaces:
+            Facility(...)
+            is_valid_assignment(...)
+    """
+
     def __init__(self, facility_id, bank_id, initial_amount, interest_rate, max_default_likelihood, banned_states):
+        """
+            Arguments:
+                facility_id (integer):
+                bank_id (integer):
+                initial_amount (float):
+                interest_rate (float):
+                max_default_likelihood (float):
+                banned_states (list of string):
+
+            Returns:
+                Returns a facility object given metadata
+
+            Raises:
+                FIXME:
+                InvalidTypes: if banned_states is not a list
+        """
         # TODO: Make attributes private
         self.facility_id = facility_id
         self.bank_id = bank_id
@@ -33,17 +57,50 @@ class Facility(object):
             'banned_states': self.banned_states,
         })
 
-    def is_valid_assignment(self, loan):
+    def is_valid_assignment(self, loan_request):
+        """
+            Arguments:
+                loan: Loan object
+
+            Returns:
+                bool
+        """
         # TODO: IMPLEMENT
-        return True
 
 
-# TODO: Loan class
+class LoanRequest(object):
+    """
+        LoanRequest record with its associated metadata.
+
+        NOTE: For now this is a simple container class. In the future, this might potentially evolve to capture more complicated relationships across financial entities (classes) and functions.
+    """
+
+    def __init__(self, loan_id, amount, default_likelihood, interest_rate, origin_state):
+        # TODO: Make attributes private
+        # TODO: Documentation
+
+        self.loan_id = loan_id
+        self.amount = amount
+        self.default_likelihood = default_likelihood
+        self.interest_rate = interest_rate
+        self.origin_state = origin_state
+
+    def __repr__(self):
+        return str({
+            'loan_id': self.loan_id,
+            'amount': self.amount,
+            'default_likelihood': self.default_likelihood,
+            'interest_rate': self.interest_rate,
+            'origin_state': self.origin_state,
+        })
 
 
+# TODO: Class Loan Server
 def main():
+    # TODO: Documentation
 
     # TODO: Convert to ABC + Implementation
+    # Load data
     banks_df = pd.read_csv(BANKS_CSV_PATH)
     covenants_df = pd.read_csv(COVENANTS_CSV_PATH)
     facilities_df = pd.read_csv(FACILITIES_CSV_PATH)
@@ -55,11 +112,12 @@ def main():
         facility_covenants_df = covenants_df[covenants_df.facility_id == facility_metadata.id]
 
         max_default_likelihood = float(facility_covenants_df.max_default_likelihood.dropna())
-        banned_states = facility_covenants_df.banned_state.tolist()
         facility_id = int(facility_metadata.id)
         bank_id = int(facility_metadata.bank_id)
         amount = float(facility_metadata.amount)
         interest_rate = float(facility_metadata.interest_rate)
+        banned_states = facility_covenants_df.banned_state.tolist()
+
         facilities_list.append(Facility(facility_id,
                                         bank_id,
                                         amount,
@@ -67,16 +125,28 @@ def main():
                                         max_default_likelihood,
                                         banned_states))
 
-    # TODO: Sort facility by `interest_rate` to optimize yield
+    # Sort facility by `interest_rate` to optimize yield
     facilities_list.sort(key=lambda facility: facility.interest_rate)
 
     # Process Loans Stream
     for loan in loans_df.itertuples():
         loan_found = False
 
+        loan_id = int(loan.id)
+        amount = float(loan.amount)
+        default_likelihood = float(loan.default_likelihood)
+        interest_rate = float(loan.interest_rate)
+        origin_state = str(loan.state)
+
+        loan_request = LoanRequest(loan_id,
+                                   amount,
+                                   default_likelihood,
+                                   interest_rate,
+                                   origin_state)
+
         # Iterate over facilities for loan assignments
         for facility in facilities_list:
-            loan_found = facility.is_valid_assignment(loan)
+            loan_found = facility.is_valid_assignment(loan_request)
 
             if loan_found:
                 # Log to assignmenet file
