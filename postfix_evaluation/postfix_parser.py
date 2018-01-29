@@ -3,31 +3,6 @@
 import pandas as pd
 import utils
 
-
-def isValidReference(token):
-    if len(token) == 2 and token[0].isalpha() and token[1].isnumeric():
-        return True
-    else:
-        return False
-
-
-def extract_token_reference(spreadsheet_df, cell):
-    substituted_tokens = []
-    for token in cell.split():
-        if isValidReference(token):
-            # Extract token references
-            col_ref = token[0]
-            row_ref = int(token[1])  # Reference rows start from 1
-            ref_cell = spreadsheet_df[col_ref][row_ref]
-            # NOTE: Recurssively evaluating the substituted cell
-            token = extract_token_reference(spreadsheet_df, ref_cell)
-        else:
-            pass # do nothing
-        substituted_tokens.append(token)
-    # Return cell with tokens references substituted
-    return ' '.join(substituted_tokens)
-
-
 class PostfixParser(object):
     """
         PostfixParser class.
@@ -36,33 +11,33 @@ class PostfixParser(object):
         to change with time. Ideally, there should be dedicated classes for each input source
         isolating format specific parsing functionality.
 
-        Idempotent Interfaces:
+        Interfaces:
             PostfixParser(): Constructor that loads & parses input spreadsheet
             parser.evaluate(): Evaluate: Postfix Expressions
-
-        Non-Idempotent Interfaces:
             generate_report(): Report: Produce Output Spreadsheet
     """
 
     def __init__(self, input_csv_path):
         """
-            Construtor for `PostfixParser`.
+            Construtor for `PostfixParser`. Loads, cleans, and dereferences spreadsheet
+            thus making it ready for postfix evaluation.
 
             Performs the following steps:
-            #     1. Loads facilities, covenants and loans csv into dataframes.
-            #     2. Parses facilities and covenants into a unified list of `Facility` objects.
-            #     3. Sorts `facilities_list` by `interest_rate` to optimize yield
-            #
-            # Arguments:
-            #     input_csv_path (string)
-            #     covenants_csv_path (string)
-            #     loans_csv_path (string)
-            #
-            # Returns:
-            #     `PostfixParser` object
-            #
-            # Raises:
-            #     OSError: if any of the input files are not accessible
+                1. Loads spreadsheet into a dataframe.
+                2. Fills missing cells with default '0'
+                3. Substitutes cell reference pointers with corresponding value
+
+            Arguments:
+                input_csv_path (string)
+
+            Returns:
+                `PostfixParser` object
+
+            Raises:
+                OSError: if any of the input file is not accessible
+
+            Side Effects:
+                Writes self.spreadsheet_df
         """
 
         # Load Spreadsheet
@@ -71,41 +46,97 @@ class PostfixParser(object):
 
         # Shift down rows to start rows numbers by 1
         self.spreadsheet_df.loc[len(self.spreadsheet_df)] = ''
+        self.spreadsheet_df[self.spreadsheet_df == ' '] = '0'   # NOTE: Substituting default '0' for empty cells
         self.spreadsheet_df = self.spreadsheet_df.shift().dropna()
 
         self.substitute_cells()
 
     def substitute_cells(self):
         """
-            substitute_cells
+            Resursively substitute cell reference pointers with corresponding values
 
-            Assuming:
-                1. No recurssive references
-                2. No double indirection
+            Arguments:
+                None
+
+            Returns:
+                None
+
+            Raises:
+                None
+
+            Side Effects:
+                Writes self.spreadsheet_df
         """
 
         for row in range(1, len(self.spreadsheet_df) + 1):
             for col in self.spreadsheet_df.columns:
                 cell = self.spreadsheet_df[col][row]
-
-                print(col+str(row)+':', cell.split())
-                result = extract_token_reference(self.spreadsheet_df, cell)
-                self.spreadsheet_df[col][row] = result
-
-                cell = self.spreadsheet_df[col][row]
-                print(col+str(row)+'>', cell.split())
-
-        import ipdb; ipdb.set_trace()
+                self.spreadsheet_df[col][row] = utils.extract_token_reference(self.spreadsheet_df, cell)
 
 
     def evaluate(self):
         """
-            Evaluate each of the cells in spreadsheet_df while substituting corresponding cells
-        """
-        pass
+            Evaluate each of the cells in spreadsheet_df using a stack
 
-    def generate_report(self, output_csv):
-        """
+            Arguments:
+                None
 
+            Returns:
+                None
+
+            Raises:
+                None
+
+            Side Effects:
+                Writes self.spreadsheet_df
+
+            TODO(Future):
+                Raise:
+                  InvalidToken
+                  InvalidExpression
         """
-        pass
+        for row in range(1, len(self.spreadsheet_df) + 1):
+            for col in self.spreadsheet_df.columns:
+                cell = self.spreadsheet_df[col][row]
+                stack = list()
+                try:
+                    for token in cell.split():
+                        if token.isnumeric():
+                            stack.append(token)
+                        elif token in '+-/*':
+                            operand1 = stack.pop()
+                            operand2 = stack.pop()
+                            result = str(eval(operand2 + token + operand1))
+                            stack.append(result)
+                        else:
+                            # raise 'InvalidToken'  # TODO(Future)
+                            pass
+
+                    if len(stack) == 1:
+                        self.spreadsheet_df[col][row] = stack.pop()
+                    else:
+                        self.spreadsheet_df[col][row] = '#ERR'
+                        # raise 'InvalidExpression' # TODO(Future)
+                except:
+                    self.spreadsheet_df[col][row] = '#ERR'
+                    # raise 'InvalidExpression'  # TODO(Future)
+
+    def generate_report(self, csv_filepath):
+        """
+            Generates an overall yield report of all facilities
+
+            NOTE: This is not an idempotent fuction as it issues side effects
+
+            Arguments:
+                csv_filepath (string)
+
+            Returns:
+                None
+
+            Raises:
+                OSError: if csv_filepath is not accessible
+
+            Side Effects:
+                Writing to a file
+        """
+        self.spreadsheet_df.to_csv(path_or_buf=csv_filepath, index=False, header=None)
